@@ -13,6 +13,9 @@ export interface Vehicle {
   fuel: string | null;
   mileage_km: number | null;
   notes: string | null;
+  next_service_date: string | null;
+  next_service_km: number | null;
+  inspection_due: string | null;
   created_at: string;
   updated_at: string;
 }

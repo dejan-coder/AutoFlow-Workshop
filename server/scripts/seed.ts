@@ -18,8 +18,23 @@ if (existing > 0) {
 }
 const app = await buildApp(db);
 
+// Demo-inloggning (skapas bara om det inte finns några användare). Byt lösenord direkt i drift!
+const DEMO_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@exempel.se';
+const DEMO_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'autoflow123';
+let cookie = '';
+const setup = await app.inject({ method: 'POST', url: '/api/auth/setup', payload: { email: DEMO_EMAIL, name: 'Administratör', password: DEMO_PASSWORD } });
+if (setup.statusCode === 201) {
+  cookie = `af_session=${setup.cookies.find((c) => c.name === 'af_session')!.value}`;
+  console.log(`Inloggning skapad: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+} else {
+  console.log('Det finns redan användare. Ange SEED_ADMIN_EMAIL och SEED_ADMIN_PASSWORD för en befintlig administratör.');
+  const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: DEMO_EMAIL, password: DEMO_PASSWORD } });
+  if (login.statusCode !== 200) throw new Error('Kunde inte logga in för att lägga in exempeldata');
+  cookie = `af_session=${login.cookies.find((c) => c.name === 'af_session')!.value}`;
+}
+
 async function api<T = { id: number }>(method: 'POST' | 'PUT' | 'PATCH', url: string, payload: object = {}): Promise<T> {
-  const res = await app.inject({ method, url, payload });
+  const res = await app.inject({ method, url, payload, headers: { cookie } });
   if (res.statusCode >= 400) throw new Error(`${method} ${url}: ${res.body}`);
   return res.json();
 }
@@ -40,6 +55,8 @@ await api('PUT', '/api/settings', {
 
 const sara = await api('POST', '/api/mechanics', { name: 'Sara Lind' });
 const ali = await api('POST', '/api/mechanics', { name: 'Ali Hassan' });
+await api('POST', '/api/users', { email: 'sara@exempel.se', name: 'Sara Lind', password: 'mekaniker1', role: 'mechanic', mechanic_id: sara.id });
+await api('POST', '/api/users', { email: 'kontor@exempel.se', name: 'Kim Kontor', password: 'kontoret1', role: 'office' });
 
 const customers = [
   { customer_type: 'private', name: 'Anna Andersson', phone: '070-123 45 67', email: 'anna@example.com', street: 'Björkgatan 3', postal_code: '123 45', city: 'Exempelstad' },
@@ -104,6 +121,12 @@ const at = (d: string, hhmm: string) => {
 await api('POST', '/api/bookings', { starts_at: at(today, '08:00'), duration_minutes: 60, mechanic_id: sara.id, vehicle_id: v[1].id, description: 'Däckbyte' });
 await api('POST', '/api/bookings', { starts_at: at(today, '10:00'), duration_minutes: 120, mechanic_id: ali.id, vehicle_id: v[3].id, description: 'Service' });
 await api('POST', '/api/bookings', { starts_at: at(addDays(today, 1), '09:00'), duration_minutes: 90, mechanic_id: sara.id, vehicle_id: v[0].id, description: 'Felsökning motorlampa' });
+
+// Däckhotell och service
+await api('POST', '/api/tire-storage', { vehicle_id: v[0].id, location: 'A-01', season: 'summer', tire_size: '205/55 R16', brand: 'Michelin', tread_depth_mm: 5.5, with_rims: true });
+await api('POST', '/api/tire-storage', { vehicle_id: v[1].id, location: 'A-02', season: 'summer', tire_size: '195/65 R15', brand: 'Nokian', tread_depth_mm: 4 });
+await api('PATCH', `/api/vehicles/${v[1].id}`, { next_service_date: addDays(today, 12), inspection_due: addDays(today, 25) });
+await api('PATCH', `/api/vehicles/${v[3].id}`, { next_service_km: 165000 });
 
 console.log('Exempeldata tillagd.');
 await app.close();

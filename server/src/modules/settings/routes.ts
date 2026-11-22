@@ -4,6 +4,12 @@ import type { Q } from '../../db.js';
 import { notFound } from '../../lib/errors.js';
 import { idParam, optionalText } from '../../lib/validation.js';
 
+const account = z.string().trim().regex(/^\d{4}$/, 'Kontot ska vara fyra siffror');
+export const ACCOUNT_FIELDS = [
+  'acc_receivable', 'acc_bank', 'acc_sales_25', 'acc_sales_12', 'acc_sales_6', 'acc_sales_0',
+  'acc_vat_25', 'acc_vat_12', 'acc_vat_6', 'acc_rounding',
+] as const;
+
 export const settingsUpdate = z
   .object({
     company_name: z.string().trim().min(1).max(200),
@@ -19,6 +25,12 @@ export const settingsUpdate = z
     payment_terms_days: z.number().int().min(0).max(120),
     quote_valid_days: z.number().int().min(1).max(365),
     invoice_footer: z.string().max(2000).nullish(),
+    sms_sender: z.string().trim().min(1).max(11),
+    sms_booking_template: z.string().trim().min(1).max(612),
+    sms_reminder_template: z.string().trim().min(1).max(612),
+    sms_ready_template: z.string().trim().min(1).max(612),
+    sms_service_template: z.string().trim().min(1).max(612),
+    ...Object.fromEntries(ACCOUNT_FIELDS.map((f) => [f, account])),
   })
   .partial()
   .strict();
@@ -37,6 +49,21 @@ export interface Settings {
   payment_terms_days: number;
   quote_valid_days: number;
   invoice_footer: string | null;
+  sms_sender: string;
+  sms_booking_template: string;
+  sms_reminder_template: string;
+  sms_ready_template: string;
+  sms_service_template: string;
+  acc_receivable: string;
+  acc_bank: string;
+  acc_sales_25: string;
+  acc_sales_12: string;
+  acc_sales_6: string;
+  acc_sales_0: string;
+  acc_vat_25: string;
+  acc_vat_12: string;
+  acc_vat_6: string;
+  acc_rounding: string;
 }
 
 export async function getSettings(q: Q): Promise<Settings> {

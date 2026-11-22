@@ -16,6 +16,9 @@ const base = {
   fuel: z.enum(['petrol', 'diesel', 'electric', 'hybrid', 'plugin_hybrid', 'gas', 'other']).nullish(),
   mileage_km: z.number().int().min(0).nullish(),
   notes: z.string().max(5000).nullish(),
+  next_service_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum ska vara ÅÅÅÅ-MM-DD').nullish(),
+  next_service_km: z.number().int().min(0).nullish(),
+  inspection_due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum ska vara ÅÅÅÅ-MM-DD').nullish(),
 };
 
 export const vehicleCreate = z.object(base).strict();
