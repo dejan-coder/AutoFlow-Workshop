@@ -1,57 +1,85 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Articles } from './pages/Articles';
+import { Bookings } from './pages/Bookings';
 import { CustomerDetail } from './pages/CustomerDetail';
 import { Customers } from './pages/Customers';
+import { InvoiceDetail, Invoices } from './pages/Invoices';
+import { Overview, Reports, SettingsPage } from './pages/Overview';
+import { QuoteDetail, Quotes } from './pages/Quotes';
 import { Vehicles } from './pages/Vehicles';
+import { WorkOrderDetail, WorkOrders } from './pages/WorkOrders';
 
 function useHash() {
-  const [hash, setHash] = useState(location.hash || '#/kunder');
+  const [hash, setHash] = useState(location.hash || '#/');
   useEffect(() => {
-    const on = () => setHash(location.hash || '#/kunder');
+    const on = () => {
+      setHash(location.hash || '#/');
+      scrollTo(0, 0);
+    };
     addEventListener('hashchange', on);
     return () => removeEventListener('hashchange', on);
   }, []);
   return hash;
 }
 
-const NAV = [
-  { href: '#/kunder', label: 'Kunder', ready: true },
-  { href: '#/fordon', label: 'Fordon', ready: true },
-  { href: '#/arbetsordrar', label: 'Arbetsordrar', ready: false },
-  { href: '#/tidbok', label: 'Tidbok', ready: false },
-  { href: '#/lager', label: 'Artiklar och lager', ready: false },
-  { href: '#/faktura', label: 'Offert och faktura', ready: false },
+const NAV: { href: string; label: string; section?: string }[] = [
+  { href: '#/', label: 'Översikt' },
+  { href: '#/tidbok', label: 'Tidbok' },
+  { href: '#/arbetsordrar', label: 'Arbetsordrar' },
+  { href: '#/kunder', label: 'Kunder', section: 'Register' },
+  { href: '#/fordon', label: 'Fordon' },
+  { href: '#/lager', label: 'Artiklar och lager' },
+  { href: '#/offerter', label: 'Offerter', section: 'Ekonomi' },
+  { href: '#/fakturor', label: 'Fakturor' },
+  { href: '#/rapporter', label: 'Rapporter' },
+  { href: '#/installningar', label: 'Inställningar', section: 'System' },
 ];
+
+function route(hash: string): ReactNode {
+  const m = (re: RegExp) => hash.match(re);
+  let r;
+  if ((r = m(/^#\/kunder\/(\d+)$/))) return <CustomerDetail id={Number(r[1])} />;
+  if ((r = m(/^#\/arbetsordrar\/(\d+)$/))) return <WorkOrderDetail id={Number(r[1])} />;
+  if ((r = m(/^#\/offerter\/(\d+)$/))) return <QuoteDetail id={Number(r[1])} />;
+  if ((r = m(/^#\/fakturor\/(\d+)$/))) return <InvoiceDetail id={Number(r[1])} />;
+  const pages: Record<string, ReactNode> = {
+    '#/': <Overview />,
+    '#/tidbok': <Bookings />,
+    '#/arbetsordrar': <WorkOrders />,
+    '#/kunder': <Customers />,
+    '#/fordon': <Vehicles />,
+    '#/lager': <Articles />,
+    '#/offerter': <Quotes />,
+    '#/fakturor': <Invoices />,
+    '#/rapporter': <Reports />,
+    '#/installningar': <SettingsPage />,
+  };
+  return pages[hash] ?? <div className="card empty">Sidan finns inte.</div>;
+}
 
 export function App() {
   const hash = useHash();
-  const customerMatch = hash.match(/^#\/kunder\/(\d+)$/);
-
-  let page;
-  if (customerMatch) page = <CustomerDetail id={Number(customerMatch[1])} />;
-  else if (hash.startsWith('#/kunder')) page = <Customers />;
-  else if (hash.startsWith('#/fordon')) page = <Vehicles />;
-  else page = <div className="card empty">Den här modulen byggs i en senare version.</div>;
-
+  const active = (href: string) => (href === '#/' ? hash === '#/' : hash.startsWith(href));
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand">
+        <a className="brand" href="#/">
           <span className="logo">AF</span>
           <div>
             <strong>AutoFlow</strong>
             <small>Workshop</small>
           </div>
-        </div>
+        </a>
         <nav>
           {NAV.map((n) => (
-            <a key={n.href} href={n.href} className={`${hash.startsWith(n.href) ? 'active' : ''} ${n.ready ? '' : 'soon'}`}>
-              {n.label}
-              {!n.ready && <em>snart</em>}
-            </a>
+            <div key={n.href} className="nav-group">
+              {n.section && <div className="nav-section">{n.section}</div>}
+              <a href={n.href} className={active(n.href) ? 'active' : ''}>{n.label}</a>
+            </div>
           ))}
         </nav>
       </aside>
-      <main>{page}</main>
+      <main key={hash}>{route(hash)}</main>
     </div>
   );
 }

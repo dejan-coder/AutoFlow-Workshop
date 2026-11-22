@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, FUEL_LABELS, type Customer, type Vehicle } from '../api';
+import { api, ApiError, FUEL_LABELS, get, post, type Customer, type Invoice, type Vehicle, type WorkOrder } from '../api';
+import { Badge, Plate, useLoad } from '../components/common';
+import { date, INVOICE_STATUS, kr, WO_STATUS } from '../format';
 import { CustomerForm } from './CustomerForm';
 import { VehicleForm } from './VehicleForm';
 
@@ -81,7 +83,7 @@ export function CustomerDetail({ id }: { id: number }) {
           />
         )}
         <table>
-          <thead><tr><th>Regnummer</th><th>Fordon</th><th>År</th><th>Drivmedel</th><th>Mätare</th></tr></thead>
+          <thead><tr><th>Regnummer</th><th>Fordon</th><th>År</th><th>Drivmedel</th><th>Mätare</th><th /></tr></thead>
           <tbody>
             {customer.vehicles.map((v) => (
               <tr key={v.id}>
@@ -90,12 +92,61 @@ export function CustomerDetail({ id }: { id: number }) {
                 <td>{v.model_year}</td>
                 <td>{v.fuel ? FUEL_LABELS[v.fuel] : ''}</td>
                 <td>{v.mileage_km != null ? `${v.mileage_km.toLocaleString('sv-SE')} km` : ''}</td>
+                <td className="num">
+                  <button className="link" onClick={async () => {
+                    const wo = await post<{ id: number }>('/api/work-orders', { vehicle_id: v.id, customer_id: id });
+                    location.hash = `#/arbetsordrar/${wo.id}`;
+                  }}>Ny arbetsorder</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         {customer.vehicles.length === 0 && !addingVehicle && <p className="empty">Inga fordon kopplade ännu.</p>}
       </section>
+      <CustomerHistory customerId={id} />
     </>
+  );
+}
+
+function CustomerHistory({ customerId }: { customerId: number }) {
+  const { data: orders } = useLoad(() => get<{ items: WorkOrder[] }>(`/api/work-orders?customer_id=${customerId}&limit=20`), [customerId]);
+  const { data: invoices } = useLoad(() => get<{ items: Invoice[] }>(`/api/invoices?customer_id=${customerId}&limit=20`), [customerId]);
+  return (
+    <div className="grid-2">
+      <section className="card">
+        <h2>Arbetsordrar</h2>
+        {orders?.items.length === 0 && <p className="empty">Inga arbetsordrar.</p>}
+        <table>
+          <tbody>
+            {orders?.items.map((w) => (
+              <tr key={w.id} className="clickable" onClick={() => (location.hash = `#/arbetsordrar/${w.id}`)}>
+                <td>#{w.id}</td>
+                <td><Plate reg={w.registration_number} /></td>
+                <td>{date(w.created_at)}</td>
+                <td><Badge kind={w.status}>{WO_STATUS[w.status]}</Badge></td>
+                <td className="num">{kr(w.net_amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card">
+        <h2>Fakturor</h2>
+        {invoices?.items.length === 0 && <p className="empty">Inga fakturor.</p>}
+        <table>
+          <tbody>
+            {invoices?.items.map((i) => (
+              <tr key={i.id} className="clickable" onClick={() => (location.hash = `#/fakturor/${i.id}`)}>
+                <td>{i.invoice_number}</td>
+                <td>{i.invoice_date}</td>
+                <td><Badge kind={i.invoice_type === 'credit' ? 'credit' : i.status}>{i.invoice_type === 'credit' ? 'Kredit' : INVOICE_STATUS[i.status]}</Badge></td>
+                <td className="num">{kr(i.total_amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </div>
   );
 }

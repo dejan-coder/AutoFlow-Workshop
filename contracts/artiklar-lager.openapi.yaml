@@ -1,0 +1,103 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Artiklar och lager
+  version: 0.2.0
+  description: |
+    Modul 4. Varje saldoändring loggas som en lagerrörelse (purchase, adjustment, count, work_order).
+    Artiklar med track_stock = false får inga rörelser.
+paths:
+  /api/articles:
+    get:
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/search'
+        - { name: low_stock, in: query, description: Bara artiklar på eller under beställningspunkt, schema: { type: boolean } }
+        - { name: include_inactive, in: query, schema: { type: boolean } }
+        - $ref: 'common.yaml#/components/parameters/limit'
+        - $ref: 'common.yaml#/components/parameters/offset'
+      responses:
+        '200': { description: Artiklar, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Article' } }, total: { type: integer } } } } } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/ArticleInput' }]
+              properties: { stock_quantity: { type: number, minimum: 0, description: Startsaldo, loggas som inventering } }
+              required: [article_number, name]
+      responses:
+        '201': { description: Skapad, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } }
+        '409': { description: Artikelnumret finns redan, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/Error' } } } }
+  /api/articles/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Artikel, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } } }
+    patch:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleInput' } } } }
+      responses: { '200': { description: Uppdaterad, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } } }
+    delete:
+      summary: Ta bort artikel som aldrig använts (annars 409, gör den inaktiv i stället)
+      responses: { '204': { description: Borttagen }, '409': { $ref: 'common.yaml#/components/responses/Error' } }
+  /api/articles/{id}/stock:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      summary: Inleverans, justering eller inventering
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, required: [reason, quantity], properties: { reason: { const: purchase }, quantity: { type: number, exclusiveMinimum: 0 }, note: { type: string } } }
+                - { type: object, required: [reason, quantity], properties: { reason: { const: adjustment }, quantity: { type: number, description: 'Positiv eller negativ, inte 0' }, note: { type: string } } }
+                - { type: object, required: [reason, counted_quantity], properties: { reason: { const: count }, counted_quantity: { type: number, minimum: 0 }, note: { type: string } } }
+      responses:
+        '200': { description: Artikeln med nytt saldo, content: { application/json: { schema: { $ref: '#/components/schemas/Article' } } } }
+        '409': { description: Artikeln lagerförs inte, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/Error' } } } }
+  /api/articles/{id}/movements:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      summary: De senaste 200 lagerrörelserna
+      responses:
+        '200':
+          description: Rörelser, nyast först
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        quantity: { type: number }
+                        reason: { type: string, enum: [purchase, adjustment, work_order, count] }
+                        work_order_id: { type: [integer, 'null'] }
+                        note: { type: [string, 'null'] }
+                        created_at: { type: string, format: date-time }
+components:
+  schemas:
+    ArticleInput:
+      type: object
+      additionalProperties: false
+      properties:
+        article_number: { type: string }
+        name: { type: string }
+        unit: { type: string, default: st }
+        purchase_price: { type: number, minimum: 0 }
+        sale_price: { type: number, minimum: 0, description: Exkl. moms }
+        vat_rate: { $ref: 'common.yaml#/components/schemas/VatRate' }
+        track_stock: { type: boolean, default: true }
+        reorder_level: { type: [number, 'null'] }
+        supplier: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        active: { type: boolean }
+    Article:
+      allOf:
+        - $ref: '#/components/schemas/ArticleInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            stock_quantity: { type: number }

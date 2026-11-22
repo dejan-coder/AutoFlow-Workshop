@@ -1,0 +1,205 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Offert, faktura, inställningar och rapporter
+  version: 0.2.0
+  description: |
+    Modul 5. En godkänd offert blir en arbetsorder med samma rader. En faktura skapas från en arbetsorder;
+    kund, fordon och rader sparas som ögonblicksbild. Fakturanummer är löpande från 1001.
+    Kreditering skapar en kreditfaktura med negativa rader och öppnar arbetsordern igen (status done).
+paths:
+  /api/quotes:
+    get:
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/search'
+        - { name: status, in: query, schema: { type: string, enum: [draft, sent, accepted, rejected] } }
+        - { name: customer_id, in: query, schema: { type: integer } }
+      responses: { '200': { description: Offerter med net_amount } }
+    post:
+      summary: Skapa offert. Kund hämtas från fordonet om den saknas. valid_until default = idag + quote_valid_days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                customer_id: { type: integer }
+                vehicle_id: { type: [integer, 'null'] }
+                description: { type: [string, 'null'] }
+                valid_until: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+      responses: { '201': { description: Offert, content: { application/json: { schema: { $ref: '#/components/schemas/Quote' } } } } }
+  /api/quotes/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Offert, content: { application/json: { schema: { $ref: '#/components/schemas/Quote' } } } } }
+    patch:
+      summary: Ändra (inte tillåtet när offerten är godkänd)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                vehicle_id: { type: [integer, 'null'] }
+                description: { type: [string, 'null'] }
+                valid_until: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+                status: { type: string, enum: [draft, sent, rejected] }
+      responses: { '200': { description: Offert }, '409': { $ref: 'common.yaml#/components/responses/Error' } }
+    delete:
+      responses: { '204': { description: Borttagen }, '409': { $ref: 'common.yaml#/components/responses/Error' } }
+  /api/quotes/{id}/lines:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      summary: Lägg till rad (påverkar inte lagret)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/LineInput' } } } }
+      responses: { '201': { description: Hela offerten } }
+  /api/quotes/{id}/lines/{lineId}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }, { $ref: 'common.yaml#/components/parameters/lineId' }]
+    patch:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/LinePatch' } } } }
+      responses: { '200': { description: Hela offerten } }
+    delete:
+      responses: { '200': { description: Hela offerten } }
+  /api/quotes/{id}/accept:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      summary: Kunden godkänner. Skapar arbetsorder med offertens rader (artiklar dras från lagret).
+      responses:
+        '201': { description: Skapad, content: { application/json: { schema: { type: object, properties: { work_order_id: { type: integer }, quote: { $ref: '#/components/schemas/Quote' } } } } } }
+        '400': { description: Offerten saknar fordon }
+  /api/quotes/{id}/pdf:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Offert som PDF, content: { application/pdf: {} } } }
+  /api/invoices:
+    get:
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/search'
+        - { name: status, in: query, schema: { type: string, enum: [unpaid, paid, credited, overdue] } }
+        - { name: customer_id, in: query, schema: { type: integer } }
+        - { name: from, in: query, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: to, in: query, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+      responses: { '200': { description: Fakturor utan rader } }
+    post:
+      summary: Fakturera arbetsorder (status får inte vara invoiced eller cancelled, och ordern måste ha rader)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [work_order_id]
+              additionalProperties: false
+              properties:
+                work_order_id: { type: integer }
+                invoice_date: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+      responses:
+        '201': { description: Faktura, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '409': { $ref: 'common.yaml#/components/responses/Error' }
+  /api/invoices/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Faktura, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } } }
+  /api/invoices/{id}/pay:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      requestBody: { content: { application/json: { schema: { type: object, properties: { paid_at: { $ref: 'common.yaml#/components/schemas/IsoDate' } } } } } }
+      responses: { '200': { description: Betald }, '409': { description: Fakturan är inte obetald } }
+  /api/invoices/{id}/credit:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      responses: { '201': { description: Kreditfakturan, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } } }
+  /api/invoices/{id}/pdf:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Faktura som PDF, content: { application/pdf: {} } } }
+  /api/settings:
+    get:
+      responses: { '200': { description: Verkstadens uppgifter, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } } }
+    put:
+      summary: Ändra inställningar (bara skickade fält ändras)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+      responses: { '200': { description: Inställningar } }
+  /api/mechanics:
+    get:
+      parameters: [{ name: include_inactive, in: query, schema: { type: boolean } }]
+      responses: { '200': { description: Mekaniker } }
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, active: { type: boolean } } } } } }
+      responses: { '201': { description: Skapad } }
+  /api/mechanics/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    patch:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, active: { type: boolean } } } } } }
+      responses: { '200': { description: Uppdaterad } }
+  /api/dashboard:
+    get:
+      summary: Nyckeltal för översikten
+      responses: { '200': { description: 'work_orders per status, bookings_today, overdue_invoices, low_stock_articles' } }
+  /api/reports/sales:
+    get:
+      summary: Försäljning för en period (kreditfakturor räknas av)
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: to, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+      responses: { '200': { description: 'invoice_count, net_amount, vat_amount, total_amount, by_line_type, labor_by_mechanic' } }
+components:
+  schemas:
+    Quote:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [draft, sent, accepted, rejected] }
+        customer_id: { type: integer }
+        customer_name: { type: string }
+        vehicle_id: { type: [integer, 'null'] }
+        registration_number: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        valid_until: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+        work_order_id: { type: [integer, 'null'] }
+        lines: { type: array, items: { $ref: 'common.yaml#/components/schemas/Line' } }
+        totals: { $ref: 'common.yaml#/components/schemas/Totals' }
+    Invoice:
+      type: object
+      properties:
+        id: { type: integer }
+        invoice_number: { type: integer }
+        invoice_type: { type: string, enum: [invoice, credit] }
+        credited_invoice_id: { type: [integer, 'null'] }
+        credited_invoice_number: { type: [integer, 'null'] }
+        work_order_id: { type: [integer, 'null'] }
+        customer_id: { type: integer }
+        customer_name: { type: string }
+        customer_identity_number: { type: [string, 'null'] }
+        customer_address: { type: [string, 'null'] }
+        registration_number: { type: [string, 'null'] }
+        mileage_km: { type: [integer, 'null'] }
+        invoice_date: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+        due_date: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+        status: { type: string, enum: [unpaid, paid, credited] }
+        paid_at: { type: [string, 'null'] }
+        net_amount: { type: number }
+        vat_amount: { type: number }
+        rounding: { type: number }
+        total_amount: { type: number }
+        lines: { type: array, items: { $ref: 'common.yaml#/components/schemas/Line' } }
+        totals: { $ref: 'common.yaml#/components/schemas/Totals' }
+    Settings:
+      type: object
+      properties:
+        company_name: { type: string }
+        org_number: { type: [string, 'null'] }
+        vat_number: { type: [string, 'null'] }
+        street: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        phone: { type: [string, 'null'] }
+        email: { type: [string, 'null'] }
+        bankgiro: { type: [string, 'null'] }
+        default_hourly_rate: { type: number }
+        payment_terms_days: { type: integer }
+        quote_valid_days: { type: integer }
+        invoice_footer: { type: [string, 'null'] }
