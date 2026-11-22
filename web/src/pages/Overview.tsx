@@ -3,6 +3,9 @@ import { get, put, post, patch, qs, type Booking, type Mechanic, type Settings, 
 import { Badge, ErrorText, Plate, useAction, useLoad } from '../components/common';
 import { Field } from '../components/Field';
 import { addDays, kr, num, time, today, WO_STATUS } from '../format';
+import { SmsButton } from '../components/SmsButton';
+import { useAuth } from '../auth';
+import { UsersAdmin } from './Users';
 
 interface Dashboard {
   work_orders: { open: number; in_progress: number; done: number };
@@ -11,7 +14,24 @@ interface Dashboard {
   low_stock_articles: number;
 }
 
+interface ServiceDue {
+  id: number;
+  registration_number: string;
+  make: string | null;
+  model: string | null;
+  next_service_date: string | null;
+  next_service_km: number | null;
+  mileage_km: number | null;
+  inspection_due: string | null;
+  service_reminder_sent_at: string | null;
+  customer_id: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+}
+
 export function Overview() {
+  const { can } = useAuth();
+  const { data: due } = useLoad(() => get<{ items: ServiceDue[] }>('/api/service-due?days=30'), []);
   const { data: d } = useLoad(() => get<Dashboard>('/api/dashboard'), []);
   const { data: bookings } = useLoad(() => get<{ items: Booking[] }>(`/api/bookings?${qs({ from: today(), to: today() })}`), []);
   const { data: orders } = useLoad(() => get<{ items: WorkOrder[] }>('/api/work-orders?status=open,in_progress,done&limit=10'), []);
@@ -22,7 +42,7 @@ export function Overview() {
         <a className="stat card" href="#/tidbok"><span>Bokningar idag</span><strong>{d?.bookings_today ?? '–'}</strong></a>
         <a className="stat card" href="#/arbetsordrar"><span>Pågående ordrar</span><strong>{d ? d.work_orders.open + d.work_orders.in_progress : '–'}</strong></a>
         <a className="stat card" href="#/arbetsordrar"><span>Klara att fakturera</span><strong>{d?.work_orders.done ?? '–'}</strong></a>
-        <a className="stat card" href="#/fakturor"><span>Förfallna fakturor</span><strong className={d?.overdue_invoices.n ? 'warn' : ''}>{d?.overdue_invoices.n ?? '–'}</strong>{d?.overdue_invoices.n ? <small>{kr(d.overdue_invoices.amount)}</small> : null}</a>
+        {can('admin', 'office') && <a className="stat card" href="#/fakturor"><span>Förfallna fakturor</span><strong className={d?.overdue_invoices.n ? 'warn' : ''}>{d?.overdue_invoices.n ?? '–'}</strong>{d?.overdue_invoices.n ? <small>{kr(d.overdue_invoices.amount)}</small> : null}</a>}
         <a className="stat card" href="#/lager"><span>Artiklar att beställa</span><strong className={d?.low_stock_articles ? 'warn' : ''}>{d?.low_stock_articles ?? '–'}</strong></a>
       </div>
       <div className="grid-2">
@@ -49,6 +69,32 @@ export function Overview() {
           </ul>
         </section>
       </div>
+      <section className="card">
+        <h2>Service och besiktning inom 30 dagar</h2>
+        {due?.items.length === 0 && <p className="empty">Inga fordon behöver service eller besiktning den närmaste månaden.</p>}
+        <table>
+          <tbody>
+            {due?.items.map((v) => (
+              <tr key={v.id}>
+                <td><Plate reg={v.registration_number} /></td>
+                <td>{v.customer_id ? <a href={`#/kunder/${v.customer_id}`}>{v.customer_name}</a> : <span className="muted">Ingen ägare</span>}</td>
+                <td className="small">
+                  {v.next_service_date && <div>Service {v.next_service_date}</div>}
+                  {v.next_service_km != null && <div>Service vid {num(v.next_service_km)} km (nu {num(v.mileage_km)} km)</div>}
+                  {v.inspection_due && <div>Besiktning {v.inspection_due}</div>}
+                </td>
+                <td className="num">
+                  {v.service_reminder_sent_at ? (
+                    <span className="muted small">Påmind {v.service_reminder_sent_at.slice(0, 10)}</span>
+                  ) : (
+                    v.customer_phone && <SmsButton className="link" label="Skicka påminnelse" url={`/api/vehicles/${v.id}/service-reminder`} />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </>
   );
 }
@@ -115,9 +161,26 @@ export function SettingsPage() {
   const [newMechanic, setNewMechanic] = useState('');
   const action = useAction();
   const mAction = useAction();
+  const { can } = useAuth();
+  const { data: smsStatus } = useLoad(() => get<{ provider: string; sends_for_real: boolean }>('/api/messages/status'), []);
+  const { data: lookupStatus } = useLoad(() => get<{ external_configured: boolean }>('/api/vehicle-lookup/status'), []);
   if (!s) return <div className="card">Laddar…</div>;
+  if (!can('admin')) {
+    return (
+      <>
+        <header className="page-head"><h1>Inställningar</h1></header>
+        <section className="card">
+          <p>Verkstadens inställningar och användare hanteras av administratören.</p>
+          <a className="button ghost" href="#/konto">Mitt konto och lösenord</a>
+        </section>
+      </>
+    );
+  }
   const text = (k: keyof Settings, label: string) => (
     <Field label={label}><input value={(s[k] as string | null) ?? ''} onChange={(e) => setData({ ...s, [k]: e.target.value })} /></Field>
+  );
+  const template = (k: keyof Settings, label: string) => (
+    <Field label={label}><textarea rows={2} value={(s[k] as string) ?? ''} onChange={(e) => setData({ ...s, [k]: e.target.value })} /></Field>
   );
   const number = (k: keyof Settings, label: string) => (
     <Field label={label}><input value={String(s[k] ?? '')} inputMode="decimal" onChange={(e) => setData({ ...s, [k]: e.target.value as unknown as number })} /></Field>
@@ -142,6 +205,31 @@ export function SettingsPage() {
           <div className="row">{text('phone', 'Telefon')}{text('email', 'E-post')}{text('bankgiro', 'Bankgiro')}</div>
           <div className="row">{number('default_hourly_rate', 'Timpris exkl. moms')}{number('payment_terms_days', 'Betalningsvillkor (dagar)')}{number('quote_valid_days', 'Offert giltig (dagar)')}</div>
           <Field label="Text längst ned på fakturan"><textarea rows={2} value={s.invoice_footer ?? ''} onChange={(e) => setData({ ...s, invoice_footer: e.target.value })} /></Field>
+
+          <h3>SMS till kunder</h3>
+          <p className={smsStatus?.sends_for_real ? 'ok' : 'muted'}>
+            {smsStatus?.sends_for_real
+              ? `SMS skickas via ${smsStatus.provider}.`
+              : 'Ingen SMS-tjänst är kopplad. Meddelanden sparas i historiken men skickas inte. Se README för hur du kopplar 46elks.'}
+          </p>
+          <p className="muted small">Fält i mallarna: {'{kund} {regnr} {datum} {tid} {belopp} {vad} {verkstad} {telefon}'}</p>
+          <div className="row">{text('sms_sender', 'Avsändarnamn (max 11 tecken)')}</div>
+          {template('sms_booking_template', 'Bokningsbekräftelse')}
+          {template('sms_reminder_template', 'Påminnelse dagen innan')}
+          {template('sms_ready_template', 'Bilen är klar')}
+          {template('sms_service_template', 'Påminnelse om service/besiktning')}
+
+          <h3>Kontoplan för bokföringsexport</h3>
+          <div className="row">{text('acc_receivable', 'Kundfordringar')}{text('acc_bank', 'Bank')}{text('acc_rounding', 'Öresavrundning')}</div>
+          <div className="row">{text('acc_sales_25', 'Försäljning 25 %')}{text('acc_sales_12', 'Försäljning 12 %')}{text('acc_sales_6', 'Försäljning 6 %')}{text('acc_sales_0', 'Försäljning momsfri')}</div>
+          <div className="row">{text('acc_vat_25', 'Utgående moms 25 %')}{text('acc_vat_12', 'Utgående moms 12 %')}{text('acc_vat_6', 'Utgående moms 6 %')}</div>
+
+          <h3>Fordonsuppslag</h3>
+          <p className="muted">
+            {lookupStatus?.external_configured
+              ? 'Uppslag mot extern fordonsdatatjänst är inställt.'
+              : 'Uppslag på regnummer söker i ert eget register. För uppgifter om nya fordon kopplas en fordonsdatatjänst in (se README).'}
+          </p>
           <ErrorText error={action.error} />
           <div className="actions"><button type="submit" disabled={action.busy}>Spara inställningar</button></div>
         </form>
@@ -167,6 +255,7 @@ export function SettingsPage() {
         </form>
         <ErrorText error={mAction.error} />
       </section>
+      <UsersAdmin />
     </>
   );
 }

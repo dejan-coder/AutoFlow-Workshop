@@ -10,16 +10,20 @@ Varje modul levereras som en egen MVP med eget API-kontrakt i `contracts/` och e
 | 0.2 | Artiklar och lager | Artikelregister, in-/utpris, lagersaldo som dras på order, inleverans, inventering, rörelselogg, beställningspunkt | `artiklar-lager.openapi.yaml` | Klar |
 | 0.2 | Offert och faktura | Offert med PDF som blir arbetsorder, faktura från order med moms per sats, öresavrundning, löpnummer, PDF, betalning, kreditering | `offert-faktura.openapi.yaml` | Klar |
 | 0.2 | Översikt och rapporter | Nyckeltal, försäljning per period, debiterade timmar per mekaniker, verkstadsinställningar | `offert-faktura.openapi.yaml` | Klar |
+| 0.3 | Inloggning och behörighet | Inloggning, roller (admin, kontor, mekaniker), användarhantering, byte av lösenord | `drift.openapi.yaml` | Klar |
+| 0.3 | SMS till kund | Bokningsbekräftelse, påminnelse dagen innan, "bilen är klar", servicepåminnelse, egna SMS, mallar, historik | `drift.openapi.yaml` | Klar (46elks som tillval) |
+| 0.3 | Bokföring | SIE 4-export av fakturor och inbetalningar, inställbar kontoplan, kundreskontra med åldersanalys | `drift.openapi.yaml` | Klar |
+| 0.3 | Fordonsuppslag | Uppslag på regnummer i eget register och via extern dataleverantör | `drift.openapi.yaml` | Klar (leverantör kopplas in) |
+| 0.3 | Däckhotell och service | Hyllplatser, säsong, mönsterdjup; service- och besiktningsdatum med påminnelser | `drift.openapi.yaml` | Klar |
+| 0.3 | Driftsättning | Dockerfile och docker compose, en server för API och webb | – | Klar |
 
 ## Nästa steg (förslag)
 | Version | Innehåll |
 |---|---|
-| 0.3 | Inloggning, användare och behörighet (verkstadschef, mekaniker, ekonomi) |
-| 0.3 | Fordonsuppslag på regnummer mot extern fordonsdatatjänst |
-| 0.4 | SMS/e-post till kund: bokningsbekräftelse, påminnelse, "bilen är klar" |
-| 0.4 | Bokföringsexport (SIE) och betalfil/OCR |
-| 0.5 | Inköpsordrar till leverantör, däckhotell, servicepåminnelser |
-| 0.5 | Driftsättning: Docker-image för server och webb, backup |
+| 0.4 | E-post till kund med faktura/offert som PDF |
+| 0.4 | Betalfil/OCR-nummer och avstämning mot bank |
+| 0.5 | Inköpsordrar till leverantör och leverantörskatalog |
+| 0.5 | Automatiska påminnelser (schemalagda), backup och loggning i drift |
 
 ## Principer
 - Ett modulnamn = en mapp i `server/src/modules/` och ett kontrakt i `contracts/`.

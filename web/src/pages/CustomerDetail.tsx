@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, FUEL_LABELS, get, post, type Customer, type Invoice, type Vehicle, type WorkOrder } from '../api';
 import { Badge, Plate, useLoad } from '../components/common';
 import { date, INVOICE_STATUS, kr, WO_STATUS } from '../format';
+import { MessageHistory } from '../components/SmsButton';
+import { TiresFor } from './Tires';
+import { useAuth } from '../auth';
 import { CustomerForm } from './CustomerForm';
 import { VehicleForm } from './VehicleForm';
 
@@ -11,6 +14,7 @@ export function CustomerDetail({ id }: { id: number }) {
   const [customer, setCustomer] = useState<Detail | null>(null);
   const [editing, setEditing] = useState(false);
   const [addingVehicle, setAddingVehicle] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(() => api.getCustomer(id).then(setCustomer).catch((e) => setError(e.message)), [id]);
@@ -82,8 +86,20 @@ export function CustomerDetail({ id }: { id: number }) {
             }}
           />
         )}
+        {editingVehicle && (
+          <VehicleForm
+            key={editingVehicle.id}
+            initial={editingVehicle}
+            onCancel={() => setEditingVehicle(null)}
+            onSubmit={async (v) => {
+              await api.updateVehicle(editingVehicle.id, v);
+              setEditingVehicle(null);
+              await load();
+            }}
+          />
+        )}
         <table>
-          <thead><tr><th>Regnummer</th><th>Fordon</th><th>År</th><th>Drivmedel</th><th>Mätare</th><th /></tr></thead>
+          <thead><tr><th>Regnummer</th><th>Fordon</th><th>År</th><th>Drivmedel</th><th>Mätare</th><th>Service / besiktning</th><th /></tr></thead>
           <tbody>
             {customer.vehicles.map((v) => (
               <tr key={v.id}>
@@ -92,7 +108,13 @@ export function CustomerDetail({ id }: { id: number }) {
                 <td>{v.model_year}</td>
                 <td>{v.fuel ? FUEL_LABELS[v.fuel] : ''}</td>
                 <td>{v.mileage_km != null ? `${v.mileage_km.toLocaleString('sv-SE')} km` : ''}</td>
-                <td className="num">
+                <td className="small">
+                  {v.next_service_date && <div>Service {v.next_service_date}</div>}
+                  {v.next_service_km != null && <div>Service vid {v.next_service_km.toLocaleString('sv-SE')} km</div>}
+                  {v.inspection_due && <div>Besiktning {v.inspection_due}</div>}
+                </td>
+                <td className="num nowrap">
+                  <button className="link" onClick={() => { setAddingVehicle(false); setEditingVehicle(v); }}>Ändra</button>{' '}
                   <button className="link" onClick={async () => {
                     const wo = await post<{ id: number }>('/api/work-orders', { vehicle_id: v.id, customer_id: id });
                     location.hash = `#/arbetsordrar/${wo.id}`;
@@ -104,14 +126,20 @@ export function CustomerDetail({ id }: { id: number }) {
         </table>
         {customer.vehicles.length === 0 && !addingVehicle && <p className="empty">Inga fordon kopplade ännu.</p>}
       </section>
+      <TiresFor customerId={id} />
       <CustomerHistory customerId={id} />
+      <MessageHistory customerId={id} />
     </>
   );
 }
 
 function CustomerHistory({ customerId }: { customerId: number }) {
+  const { can } = useAuth();
   const { data: orders } = useLoad(() => get<{ items: WorkOrder[] }>(`/api/work-orders?customer_id=${customerId}&limit=20`), [customerId]);
-  const { data: invoices } = useLoad(() => get<{ items: Invoice[] }>(`/api/invoices?customer_id=${customerId}&limit=20`), [customerId]);
+  const { data: invoices } = useLoad(
+    () => (can('admin', 'office') ? get<{ items: Invoice[] }>(`/api/invoices?customer_id=${customerId}&limit=20`) : Promise.resolve(null)),
+    [customerId],
+  );
   return (
     <div className="grid-2">
       <section className="card">
@@ -131,7 +159,7 @@ function CustomerHistory({ customerId }: { customerId: number }) {
           </tbody>
         </table>
       </section>
-      <section className="card">
+      {invoices && <section className="card">
         <h2>Fakturor</h2>
         {invoices?.items.length === 0 && <p className="empty">Inga fakturor.</p>}
         <table>
@@ -146,7 +174,7 @@ function CustomerHistory({ customerId }: { customerId: number }) {
             ))}
           </tbody>
         </table>
-      </section>
+      </section>}
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { del, get, patch, post, qs, type Mechanic, type Vehicle, type WorkOrder,
 import { Badge, ErrorText, Plate, StatusTabs, useAction, useLoad, VehiclePicker } from '../components/common';
 import { LinesEditor } from '../components/LinesEditor';
 import { date, dateTime, kr, WO_STATUS } from '../format';
+import { SmsButton } from '../components/SmsButton';
+import { useAuth } from '../auth';
 
 type Filter = 'active' | 'done' | 'invoiced' | 'all';
 const FILTER_STATUS: Record<Filter, string | undefined> = {
@@ -133,6 +135,7 @@ export function WorkOrderDetail({ id }: { id: number }) {
   const { data: wo, error, setData } = useLoad(() => get<WorkOrder>(`/api/work-orders/${id}`), [id]);
   const { data: mechanics } = useLoad(() => get<{ items: Mechanic[] }>('/api/mechanics'), []);
   const action = useAction();
+  const { can } = useAuth();
 
   if (error) return <div className="card error">{error}</div>;
   if (!wo) return <div className="card">Laddar…</div>;
@@ -152,7 +155,8 @@ export function WorkOrderDetail({ id }: { id: number }) {
           {NEXT[wo.status]?.map(([s, label]) => (
             <button key={s} className={s === 'done' ? '' : 'ghost'} onClick={() => update({ status: s })}>{label}</button>
           ))}
-          {wo.status === 'done' && (
+          {['done', 'invoiced'].includes(wo.status) && <SmsButton label="SMS: bilen är klar" url={`/api/work-orders/${id}/notify-ready`} />}
+          {wo.status === 'done' && can('admin', 'office') && (
             <button
               onClick={() =>
                 action.run(async () => {
@@ -164,7 +168,7 @@ export function WorkOrderDetail({ id }: { id: number }) {
               Fakturera
             </button>
           )}
-          {wo.invoice && <a className="button ghost" href={`#/fakturor/${wo.invoice.id}`}>Faktura {wo.invoice.invoice_number}</a>}
+          {wo.invoice && can('admin', 'office') && <a className="button ghost" href={`#/fakturor/${wo.invoice.id}`}>Faktura {wo.invoice.invoice_number}</a>}
           {editable && (
             <button className="danger" onClick={() => confirm('Makulera arbetsordern? Artiklar läggs tillbaka i lager.') && update({ status: 'cancelled' })}>
               Makulera

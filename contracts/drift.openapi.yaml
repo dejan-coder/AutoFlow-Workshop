@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Inloggning, SMS, bokföring, fordonsuppslag och däckhotell
+  version: 0.3.0
+  description: |
+    Alla /api-vägar utom /api/auth/status, /api/auth/login och /api/auth/setup kräver inloggning (kakan af_session).
+    401 = inte inloggad, 403 = rollen saknar behörighet.
+
+    Roller:
+    - mechanic: tidbok, arbetsordrar, kunder, fordon, lager (läsa, inleverans), däckhotell, SMS
+    - office: allt ovan plus offerter, fakturor, rapporter, bokföring och artikelregister
+    - admin: allt, plus användare, mekaniker och verkstadsinställningar
+paths:
+  /api/auth/status:
+    get:
+      summary: Om första-start behövs och vem som är inloggad
+      responses: { '200': { description: '{ setup_required: boolean, user: User | null }' } }
+  /api/auth/setup:
+    post:
+      summary: Skapar första administratören (bara när det inte finns några användare) och loggar in
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, name, password], properties: { email: { type: string }, name: { type: string }, password: { type: string, minLength: 8 } } } } } }
+      responses: { '201': { description: Inloggad }, '409': { description: Det finns redan användare } }
+  /api/auth/login:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } } } } }
+      responses: { '200': { description: Inloggad, kakan sätts }, '401': { description: Fel uppgifter }, '429': { description: För många försök } }
+  /api/auth/logout:
+    post: { responses: { '200': { description: Utloggad } } }
+  /api/auth/password:
+    post:
+      summary: Byt eget lösenord (loggar ut andra enheter)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password, new_password], properties: { current_password: { type: string }, new_password: { type: string, minLength: 8 } } } } } }
+      responses: { '200': { description: Bytt }, '400': { description: Fel nuvarande lösenord } }
+  /api/users:
+    get: { summary: Lista användare (admin), responses: { '200': { description: '{ items: User[] }' } } }
+    post:
+      summary: Skapa användare (admin)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UserInput' } } } }
+      responses: { '201': { description: Skapad }, '409': { description: E-posten används redan } }
+  /api/users/{id}:
+    patch:
+      summary: Ändra namn, roll, koppling till mekaniker, aktiv eller lösenord (admin)
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      responses: { '200': { description: Uppdaterad }, '409': { description: Kan inte ta bort egen admin-behörighet } }
+  /api/messages/status:
+    get: { summary: Vilken SMS-leverantör som används, responses: { '200': { description: '{ provider, sends_for_real }' } } }
+  /api/messages:
+    get:
+      parameters:
+        - { name: customer_id, in: query, schema: { type: integer } }
+        - { name: work_order_id, in: query, schema: { type: integer } }
+      responses: { '200': { description: SMS-historik, nyast först } }
+    post:
+      summary: Skicka eget SMS till kund (nummer hämtas från kunden om to saknas)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [body], properties: { customer_id: { type: integer }, to: { type: string }, body: { type: string, maxLength: 612 } } } } } }
+      responses: { '201': { description: Meddelandet med status sent, logged eller failed }, '400': { description: Saknar giltigt mobilnummer } }
+  /api/bookings/{id}/notify:
+    post:
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { kind: { type: string, enum: [confirmation, reminder] } } } } } }
+      responses: { '201': { description: Skickat } }
+  /api/messages/booking-reminders:
+    post: { summary: Påminnelse till alla bokningar i morgon som inte fått någon, responses: { '200': { description: '{ date, count, results }' } } }
+  /api/work-orders/{id}/notify-ready:
+    post:
+      summary: SMS "bilen är klar" med belopp att betala
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      responses: { '201': { description: Skickat } }
+  /api/vehicles/{id}/service-reminder:
+    post:
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      responses: { '201': { description: Skickat } }
+  /api/service-due:
+    get:
+      summary: Fordon med service eller besiktning inom angivet antal dagar, eller nära servicekilometer
+      parameters: [{ name: days, in: query, schema: { type: integer, default: 30 } }]
+      responses: { '200': { description: Fordon } }
+  /api/accounting/sie:
+    get:
+      summary: SIE 4-fil (CP437) med fakturor, kreditfakturor och inbetalningar som verifikationer
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: to, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+      responses: { '200': { description: SIE-fil, content: { text/plain: {} } } }
+  /api/accounting/summary:
+    get:
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: to, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+      responses: { '200': { description: Antal och summor i exporten } }
+  /api/accounting/receivables:
+    get: { summary: Kundreskontra med åldersanalys, responses: { '200': { description: '{ date, items, totals: { not_due, d1_30, d31_60, d60_plus, total } }' } } }
+  /api/vehicle-lookup/status:
+    get: { responses: { '200': { description: '{ external_configured }' } } }
+  /api/vehicle-lookup/{reg}:
+    get:
+      summary: Slå upp fordonsuppgifter. Eget register först, sedan extern leverantör om VEHICLE_LOOKUP_URL är satt.
+      parameters: [{ name: reg, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: '{ registration_number, make, model, model_year, vin, fuel, source: local|external, existing_vehicle_id? }' }
+        '404': { description: Hittades inte eller inget externt uppslag inställt }
+        '502': { description: Leverantören svarade inte }
+  /api/tire-storage:
+    get:
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/search'
+        - { name: include_retrieved, in: query, schema: { type: boolean } }
+        - { name: vehicle_id, in: query, schema: { type: integer } }
+        - { name: customer_id, in: query, schema: { type: integer } }
+      responses: { '200': { description: Däck i förvar } }
+    post:
+      summary: Lägg in däck. Kund hämtas från fordonet om den saknas. Hyllplatsen måste vara ledig.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TireInput' } } } }
+      responses: { '201': { description: Inlagt }, '409': { description: Hyllplatsen är upptagen } }
+  /api/tire-storage/{id}:
+    patch:
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TireInput' } } } }
+      responses: { '200': { description: Uppdaterad } }
+  /api/tire-storage/{id}/retrieve:
+    post:
+      parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+      responses: { '200': { description: Utlämnad idag }, '409': { description: Redan uthämtad } }
+components:
+  schemas:
+    UserInput:
+      type: object
+      required: [email, name, password, role]
+      properties:
+        email: { type: string, format: email }
+        name: { type: string }
+        password: { type: string, minLength: 8 }
+        role: { type: string, enum: [admin, office, mechanic] }
+        mechanic_id: { type: [integer, 'null'] }
+    TireInput:
+      type: object
+      properties:
+        customer_id: { type: integer }
+        vehicle_id: { type: [integer, 'null'] }
+        location: { type: string }
+        season: { type: string, enum: [summer, winter, all_season] }
+        tire_size: { type: [string, 'null'] }
+        brand: { type: [string, 'null'] }
+        tread_depth_mm: { type: [number, 'null'] }
+        with_rims: { type: boolean }
+        quantity: { type: integer, minimum: 1, maximum: 10 }
+        stored_at: { $ref: 'common.yaml#/components/schemas/IsoDate' }
+        notes: { type: [string, 'null'] }

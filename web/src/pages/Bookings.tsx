@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { get, patch, post, qs, type Booking, type Mechanic, type Vehicle } from '../api';
 import { ErrorText, Plate, useAction, useLoad, VehiclePicker } from '../components/common';
 import { addDays, BOOKING_STATUS, mondayOf, stockholmIso, time, today } from '../format';
+import { SmsButton } from '../components/SmsButton';
 
 const DAY_NAMES = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag', 'Söndag'];
 
@@ -28,6 +29,7 @@ export function Bookings() {
           <button className="ghost" onClick={() => setWeek(addDays(week, -7))}>‹ Förra</button>
           <button className="ghost" onClick={() => setWeek(mondayOf(today()))}>Vecka {weekNo}</button>
           <button className="ghost" onClick={() => setWeek(addDays(week, 7))}>Nästa ›</button>
+          <SmsButton label="Skicka påminnelser för i morgon" url="/api/messages/booking-reminders" />
           <select value={mechanicFilter} onChange={(e) => setMechanicFilter(e.target.value)} aria-label="Mekaniker">
             <option value="">Alla mekaniker</option>
             {mechanics?.items.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -79,6 +81,7 @@ export function Bookings() {
                             location.hash = `#/arbetsordrar/${wo.id}`;
                           })}>Kunden har kommit</button>
                         )}
+                        {b.customer_phone && <SmsButton className="link" label="Skicka bekräftelse" url={`/api/bookings/${b.id}/notify`} body={{ kind: 'confirmation' }} />}
                         <button className="link danger-text" onClick={() => action.run(async () => {
                           await patch(`/api/bookings/${b.id}`, { status: 'cancelled' });
                           reload();

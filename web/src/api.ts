@@ -25,6 +25,9 @@ export interface Vehicle {
   fuel: Fuel | null;
   mileage_km: number | null;
   notes: string | null;
+  next_service_date?: string | null;
+  next_service_km?: number | null;
+  inspection_due?: string | null;
 }
 export interface Page<T> {
   items: T[];
@@ -44,7 +47,8 @@ export async function request<T>(method: string, url: string, body?: unknown): P
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return undefined as T;
-  const data = await res.json();
+  if (res.status === 401 && !url.startsWith('/api/auth/')) dispatchEvent(new Event('af:unauthorized'));
+  const data = await res.json().catch(() => ({ message: `Fel ${res.status}` }));
   if (!res.ok) {
     const fields: Record<string, string> = {};
     for (const d of data.details ?? []) fields[d.field] = d.message;
@@ -222,4 +226,62 @@ export interface Settings {
   payment_terms_days: number;
   quote_valid_days: number;
   invoice_footer: string | null;
+  sms_sender: string;
+  sms_booking_template: string;
+  sms_reminder_template: string;
+  sms_ready_template: string;
+  sms_service_template: string;
+  acc_receivable: string;
+  acc_bank: string;
+  acc_sales_25: string;
+  acc_sales_12: string;
+  acc_sales_6: string;
+  acc_sales_0: string;
+  acc_vat_25: string;
+  acc_vat_12: string;
+  acc_vat_6: string;
+  acc_rounding: string;
+}
+
+export type Role = 'admin' | 'office' | 'mechanic';
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  role: Role;
+  mechanic_id: number | null;
+  active?: boolean;
+  last_login_at?: string | null;
+}
+export const ROLE_LABELS: Record<Role, string> = { admin: 'Administratör', office: 'Kontor', mechanic: 'Mekaniker' };
+
+export interface Message {
+  id: number;
+  kind: string;
+  to_phone: string;
+  body: string;
+  status: 'sent' | 'failed' | 'logged';
+  error: string | null;
+  customer_name: string | null;
+  sent_by_name: string | null;
+  created_at: string;
+}
+
+export interface TireStorage {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string | null;
+  vehicle_id: number | null;
+  registration_number: string | null;
+  location: string;
+  season: 'summer' | 'winter' | 'all_season';
+  tire_size: string | null;
+  brand: string | null;
+  tread_depth_mm: number | null;
+  with_rims: boolean;
+  quantity: number;
+  stored_at: string;
+  retrieved_at: string | null;
+  notes: string | null;
 }
