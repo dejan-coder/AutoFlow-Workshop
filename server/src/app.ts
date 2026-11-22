@@ -5,6 +5,13 @@ import type { Db } from './db.js';
 import { AppError } from './lib/errors.js';
 import { customerRoutes } from './modules/customers/routes.js';
 import { vehicleRoutes } from './modules/vehicles/routes.js';
+import { settingsRoutes } from './modules/settings/routes.js';
+import { articleRoutes } from './modules/articles/routes.js';
+import { workOrderRoutes } from './modules/work-orders/routes.js';
+import { bookingRoutes } from './modules/bookings/routes.js';
+import { quoteRoutes } from './modules/quotes/routes.js';
+import { invoiceRoutes } from './modules/invoices/routes.js';
+import { reportRoutes } from './modules/reports/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -49,5 +56,12 @@ export async function buildApp(db: Db, opts: { logger?: boolean } = {}) {
   app.get('/health', async () => ({ status: 'ok' }));
   await app.register(customerRoutes);
   await app.register(vehicleRoutes);
+  await app.register(settingsRoutes);
+  await app.register(articleRoutes);
+  await app.register(workOrderRoutes);
+  await app.register(bookingRoutes);
+  await app.register(quoteRoutes);
+  await app.register(invoiceRoutes);
+  await app.register(reportRoutes);
   return app;
 }
