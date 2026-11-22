@@ -1,0 +1,75 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Tidbok
+  version: 0.2.0
+  description: |
+    Modul 3. En mekaniker kan inte ha två aktiva bokningar (booked/arrived) som överlappar (409).
+    Datum i frågor tolkas i tidszonen Europe/Stockholm.
+paths:
+  /api/bookings:
+    get:
+      summary: Bokningar för en period
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: to, in: query, required: true, schema: { $ref: 'common.yaml#/components/schemas/IsoDate' } }
+        - { name: mechanic_id, in: query, schema: { type: integer } }
+        - { name: include_cancelled, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Bokningar sorterade på starttid, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Booking' } } } } } } }
+    post:
+      summary: Boka. Kund hämtas från fordonets ägare om den inte anges.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BookingInput' } } } }
+      responses:
+        '201': { description: Bokad, content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } }
+        '409': { description: Mekanikern är upptagen, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/Error' } } } }
+  /api/bookings/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: Bokning, content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } } }
+    patch:
+      summary: Flytta, ändra eller avboka (status cancelled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/BookingInput' }]
+              properties: { status: { type: string, enum: [booked, arrived, cancelled, no_show] } }
+              required: []
+      responses: { '200': { description: Uppdaterad, content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } } }
+    delete:
+      responses: { '204': { description: Borttagen } }
+  /api/bookings/{id}/work-order:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      summary: Kunden har kommit. Skapar arbetsorder (fordon, kund, mekaniker, beskrivning) och sätter status arrived.
+      responses:
+        '201': { description: Den nya arbetsordern, content: { application/json: { schema: { $ref: 'arbetsordrar.openapi.yaml#/components/schemas/WorkOrder' } } } }
+        '400': { $ref: 'common.yaml#/components/responses/Error' }
+        '409': { $ref: 'common.yaml#/components/responses/Error' }
+components:
+  schemas:
+    BookingInput:
+      type: object
+      required: [starts_at, duration_minutes]
+      additionalProperties: false
+      properties:
+        starts_at: { type: string, format: date-time, description: Med tidszon, t.ex. 2026-11-24T08:00:00+01:00 }
+        duration_minutes: { type: integer, minimum: 15, maximum: 1440 }
+        mechanic_id: { type: [integer, 'null'] }
+        vehicle_id: { type: [integer, 'null'] }
+        customer_id: { type: [integer, 'null'] }
+        description: { type: [string, 'null'] }
+    Booking:
+      allOf:
+        - $ref: '#/components/schemas/BookingInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            ends_at: { type: string, format: date-time }
+            status: { type: string, enum: [booked, arrived, cancelled, no_show] }
+            work_order_id: { type: [integer, 'null'] }
+            mechanic_name: { type: [string, 'null'] }
+            registration_number: { type: [string, 'null'] }
+            customer_name: { type: [string, 'null'] }
+            customer_phone: { type: [string, 'null'] }

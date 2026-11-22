@@ -1,0 +1,120 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Arbetsordrar
+  version: 0.2.0
+  description: |
+    Modul 2. Statusflöde: open → in_progress → done → invoiced. `cancelled` kan sättas från open/in_progress/done
+    och lägger tillbaka artiklar i lager. `invoiced` sätts bara av fakturamodulen och låser ordern (409 vid ändring).
+    Artikelrader drar från lagret direkt när de läggs till, ändras eller tas bort.
+paths:
+  /api/work-orders:
+    get:
+      summary: Lista arbetsordrar
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/search'
+        - { name: status, in: query, description: 'Kommaseparerad lista, t.ex. open,in_progress', schema: { type: string } }
+        - { name: vehicle_id, in: query, schema: { type: integer } }
+        - { name: customer_id, in: query, schema: { type: integer } }
+        - $ref: 'common.yaml#/components/parameters/limit'
+        - $ref: 'common.yaml#/components/parameters/offset'
+      responses:
+        '200':
+          description: Sida med arbetsordrar (utan rader, med net_amount)
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/WorkOrderSummary' } }, total: { type: integer } } } } }
+    post:
+      summary: Skapa arbetsorder. Kund hämtas från fordonets ägare om den inte anges.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderInput' } } } }
+      responses:
+        '201': { description: Skapad, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+        '400': { $ref: 'common.yaml#/components/responses/Error' }
+        '404': { $ref: 'common.yaml#/components/responses/Error' }
+  /api/work-orders/{id}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    get:
+      summary: Hämta arbetsorder med rader och summor
+      responses:
+        '200': { description: Arbetsorder, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+        '404': { $ref: 'common.yaml#/components/responses/Error' }
+    patch:
+      summary: Ändra uppgifter eller status
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderPatch' } } } }
+      responses:
+        '200': { description: Uppdaterad, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+        '409': { $ref: 'common.yaml#/components/responses/Error' }
+    delete:
+      summary: Ta bort arbetsorder som aldrig fakturerats
+      responses:
+        '204': { description: Borttagen }
+        '409': { $ref: 'common.yaml#/components/responses/Error' }
+  /api/work-orders/{id}/lines:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }]
+    post:
+      summary: Lägg till rad
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/LineInput' } } } }
+      responses:
+        '201': { description: Hela arbetsordern, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+        '409': { $ref: 'common.yaml#/components/responses/Error' }
+  /api/work-orders/{id}/lines/{lineId}:
+    parameters: [{ $ref: 'common.yaml#/components/parameters/id' }, { $ref: 'common.yaml#/components/parameters/lineId' }]
+    patch:
+      summary: Ändra rad
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'common.yaml#/components/schemas/LinePatch' } } } }
+      responses:
+        '200': { description: Hela arbetsordern, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+    delete:
+      summary: Ta bort rad
+      responses:
+        '200': { description: Hela arbetsordern, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrder' } } } }
+components:
+  schemas:
+    Status: { type: string, enum: [open, in_progress, done, invoiced, cancelled] }
+    WorkOrderInput:
+      type: object
+      required: [vehicle_id]
+      additionalProperties: false
+      properties:
+        vehicle_id: { type: integer }
+        customer_id: { type: integer }
+        mechanic_id: { type: [integer, 'null'] }
+        description: { type: [string, 'null'] }
+        internal_notes: { type: [string, 'null'] }
+        mileage_km: { type: [integer, 'null'], description: Uppdaterar fordonets mätarställning om den är högre }
+        promised_at: { type: [string, 'null'], format: date-time }
+    WorkOrderPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/Status' }
+        mechanic_id: { type: [integer, 'null'] }
+        description: { type: [string, 'null'] }
+        internal_notes: { type: [string, 'null'] }
+        mileage_km: { type: [integer, 'null'] }
+        promised_at: { type: [string, 'null'], format: date-time }
+    WorkOrderSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { $ref: '#/components/schemas/Status' }
+        vehicle_id: { type: integer }
+        customer_id: { type: integer }
+        registration_number: { type: string }
+        customer_name: { type: string }
+        mechanic_name: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        net_amount: { type: number }
+    WorkOrder:
+      allOf:
+        - $ref: '#/components/schemas/WorkOrderSummary'
+        - type: object
+          properties:
+            mechanic_id: { type: [integer, 'null'] }
+            internal_notes: { type: [string, 'null'] }
+            mileage_km: { type: [integer, 'null'] }
+            promised_at: { type: [string, 'null'], format: date-time }
+            completed_at: { type: [string, 'null'], format: date-time }
+            make: { type: [string, 'null'] }
+            model: { type: [string, 'null'] }
+            lines: { type: array, items: { $ref: 'common.yaml#/components/schemas/Line' } }
+            totals: { $ref: 'common.yaml#/components/schemas/Totals' }
+            invoice: { type: [object, 'null'], properties: { id: { type: integer }, invoice_number: { type: integer }, status: { type: string } } }

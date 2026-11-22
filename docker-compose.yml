@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: autoflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-autoflow}
+      POSTGRES_DB: autoflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./server/scripts/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoflow"]
+      interval: 5s
+      retries: 10
+
+  # Hela programmet (API + webb) på http://localhost:3000. Starta med: docker compose --profile app up -d
+  app:
+    profiles: ["app"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://autoflow:${DB_PASSWORD:-autoflow}@db:5432/autoflow
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SMS_PROVIDER: ${SMS_PROVIDER:-log}
+      SMS_46ELKS_USERNAME: ${SMS_46ELKS_USERNAME:-}
+      SMS_46ELKS_PASSWORD: ${SMS_46ELKS_PASSWORD:-}
+      VEHICLE_LOOKUP_URL: ${VEHICLE_LOOKUP_URL:-}
+      VEHICLE_LOOKUP_TOKEN: ${VEHICLE_LOOKUP_TOKEN:-}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

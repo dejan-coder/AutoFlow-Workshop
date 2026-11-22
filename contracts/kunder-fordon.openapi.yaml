@@ -1,0 +1,199 @@
+openapi: 3.1.0
+info:
+  title: AutoFlow Workshop – Kunder och fordon
+  version: 0.1.0
+  description: |
+    API-kontrakt för modul 1 (kunder och fordon).
+    Alla fel returneras som `Error`. Valideringsfel (400) har `details` per fält.
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/customers:
+    get:
+      summary: Lista och sök kunder
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Namn, telefon, e-post, person/org.nr eller regnummer }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses:
+        '200':
+          description: Sida med kunder
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+                  total: { type: integer }
+    post:
+      summary: Skapa kund
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CustomerInput' } } }
+      responses:
+        '201': { description: Skapad, content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/customers/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      summary: Hämta kund med fordon
+      responses:
+        '200':
+          description: Kund
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Customer' }
+                  - type: object
+                    properties:
+                      vehicles: { type: array, items: { $ref: '#/components/schemas/Vehicle' } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Ändra kund (bara skickade fält ändras)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CustomerPatch' } } }
+      responses:
+        '200': { description: Uppdaterad, content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Ta bort kund
+      responses:
+        '204': { description: Borttagen }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Kunden har fordon kopplade, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/vehicles:
+    get:
+      summary: Lista och sök fordon
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Regnummer, märke, modell, VIN eller ägare }
+        - { name: customer_id, in: query, schema: { type: integer } }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses:
+        '200':
+          description: Sida med fordon
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Vehicle' } }
+                  total: { type: integer }
+    post:
+      summary: Skapa fordon
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehicleInput' } } }
+      responses:
+        '201': { description: Skapat, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { description: Regnumret finns redan, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/vehicles/by-registration/{reg}:
+    get:
+      summary: Slå upp fordon på regnummer (mellanslag/bindestreck och gemener tillåts)
+      parameters: [{ name: reg, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Fordon, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/vehicles/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      summary: Hämta fordon
+      responses:
+        '200': { description: Fordon, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Ändra fordon
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehiclePatch' } } }
+      responses:
+        '200': { description: Uppdaterat, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Ta bort fordon
+      responses:
+        '204': { description: Borttaget }
+        '404': { $ref: '#/components/responses/Error' }
+components:
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+  responses:
+    Error:
+      description: Fel
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, enum: [validation_error, not_found, conflict, bad_request, internal_error] }
+        message: { type: string }
+        details:
+          type: array
+          items: { type: object, properties: { field: { type: string }, message: { type: string } } }
+    CustomerFields:
+      type: object
+      properties:
+        customer_type: { type: string, enum: [private, company] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        identity_number: { type: [string, 'null'], description: Personnummer eller organisationsnummer, Luhn-kontrolleras }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        street: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        notes: { type: [string, 'null'] }
+    CustomerInput:
+      allOf: [{ $ref: '#/components/schemas/CustomerFields' }]
+      required: [customer_type, name]
+      unevaluatedProperties: false
+    CustomerPatch:
+      allOf: [{ $ref: '#/components/schemas/CustomerFields' }]
+      unevaluatedProperties: false
+    Customer:
+      allOf:
+        - { $ref: '#/components/schemas/CustomerFields' }
+        - type: object
+          required: [id, customer_type, name, created_at, updated_at]
+          properties:
+            id: { type: integer }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    VehicleFields:
+      type: object
+      properties:
+        registration_number: { type: string, pattern: '^[A-Z]{3}[0-9]{2}[A-Z0-9]$', description: Normaliseras till versaler utan mellanslag }
+        customer_id: { type: [integer, 'null'] }
+        make: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        model_year: { type: [integer, 'null'], minimum: 1900, maximum: 2100 }
+        vin: { type: [string, 'null'], minLength: 17, maxLength: 17 }
+        fuel: { type: [string, 'null'], enum: [petrol, diesel, electric, hybrid, plugin_hybrid, gas, other, null] }
+        mileage_km: { type: [integer, 'null'], minimum: 0 }
+        notes: { type: [string, 'null'] }
+    VehicleInput:
+      allOf: [{ $ref: '#/components/schemas/VehicleFields' }]
+      required: [registration_number]
+      unevaluatedProperties: false
+    VehiclePatch:
+      allOf: [{ $ref: '#/components/schemas/VehicleFields' }]
+      unevaluatedProperties: false
+    Vehicle:
+      allOf:
+        - { $ref: '#/components/schemas/VehicleFields' }
+        - type: object
+          required: [id, registration_number, created_at, updated_at]
+          properties:
+            id: { type: integer }
+            customer_name: { type: [string, 'null'], readOnly: true }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }

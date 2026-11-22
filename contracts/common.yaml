@@ -1,0 +1,76 @@
+# Delade schema för alla moduler. Refereras som common.yaml#/components/schemas/...
+openapi: 3.1.0
+info: { title: AutoFlow Workshop – gemensamma schema, version: 0.2.0 }
+paths: {}
+components:
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    lineId: { name: lineId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    search: { name: search, in: query, schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+  responses:
+    Error:
+      description: Fel (400 valideringsfel, 404 saknas, 409 konflikt/låst)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, enum: [validation_error, not_found, conflict, bad_request, internal_error] }
+        message: { type: string }
+        details: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
+    IsoDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    VatRate: { type: number, enum: [0, 6, 12, 25] }
+    LineInput:
+      type: object
+      required: [line_type, quantity]
+      description: |
+        Rad på arbetsorder eller offert. Utelämnade fält fylls i från artikeln (benämning, enhet, pris, moms)
+        eller från verkstadens timpris för arbetsrader (enhet "tim").
+      properties:
+        line_type: { type: string, enum: [labor, article, other] }
+        article_id: { type: [integer, 'null'], description: Krävs när line_type = article }
+        description: { type: string }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        unit: { type: string }
+        unit_price: { type: number, minimum: 0, description: Exkl. moms }
+        discount_percent: { type: number, minimum: 0, maximum: 100 }
+        vat_rate: { $ref: '#/components/schemas/VatRate' }
+        sort_order: { type: integer }
+      additionalProperties: false
+    LinePatch:
+      type: object
+      properties:
+        description: { type: string }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        unit: { type: string }
+        unit_price: { type: number, minimum: 0 }
+        discount_percent: { type: number, minimum: 0, maximum: 100 }
+        vat_rate: { $ref: '#/components/schemas/VatRate' }
+        sort_order: { type: integer }
+      additionalProperties: false
+    Line:
+      type: object
+      properties:
+        id: { type: integer }
+        line_type: { type: string, enum: [labor, article, other] }
+        article_id: { type: [integer, 'null'] }
+        article_number: { type: [string, 'null'] }
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string }
+        unit_price: { type: number }
+        discount_percent: { type: number }
+        vat_rate: { type: number }
+        net_amount: { type: number, description: 'antal × à-pris × (1 − rabatt), avrundat till öre' }
+    Totals:
+      type: object
+      description: Moms räknas per momssats. Totalen öresavrundas till hela kronor.
+      properties:
+        net_amount: { type: number }
+        vat_amount: { type: number }
+        vat_by_rate: { type: array, items: { type: object, properties: { vat_rate: { type: number }, net_amount: { type: number }, vat_amount: { type: number } } } }
+        rounding: { type: number }
+        total_amount: { type: number }
